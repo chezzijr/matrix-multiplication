@@ -35,7 +35,7 @@ A comprehensive matrix multiplication implementation with multiple algorithms an
 
 ## Prerequisites
 
-Install the required dependencies:
+### Linux
 
 ```bash
 # On Arch Linux
@@ -46,13 +46,46 @@ sudo apt-get install cmake libopenmpi-dev libopenblas-dev
 
 # On Fedora/RHEL
 sudo dnf install cmake openmpi-devel openblas-devel
+```
 
-# On Windows (via vcpkg or MSYS2)
-# vcpkg install openmpi openblas
-# Or use Microsoft MPI + OpenBLAS from official sources
+### Windows
+
+**Option 1: Microsoft MPI (Recommended for native Windows)**
+
+```powershell
+# Install via winget
+winget install Microsoft.MPI
+winget install OpenBLAS
+
+# Or via Chocolatey
+choco install microsoft-mpi
+choco install openblas
+
+# Or download manually:
+# MS-MPI: https://docs.microsoft.com/en-us/message-passing-interface/microsoft-mpi
+# OpenBLAS: https://github.com/OpenMathLib/OpenBLAS/releases
+```
+
+**Option 2: MSYS2 (Linux-like environment)**
+
+```bash
+# Install MSYS2 from https://www.msys2.org/
+# Then in MSYS2 MINGW64 terminal:
+pacman -S mingw-w64-x86_64-toolchain
+pacman -S mingw-w64-x86_64-cmake
+pacman -S mingw-w64-x86_64-openmpi
+pacman -S mingw-w64-x86_64-openblas
+```
+
+**Note:** On Windows with MS-MPI, use `mpiexec` instead of `mpirun`:
+```powershell
+# Linux/MSYS2:  mpirun -np 4 ./matmul -a naive -m mpi -s 1000
+# Windows:      mpiexec -n 4 matmul.exe -a naive -m mpi -s 1000
 ```
 
 ## Building
+
+### Linux/macOS/MSYS2
 
 ```bash
 # Create build directory
@@ -68,18 +101,36 @@ make
 # The executable will be at: build/matmul
 ```
 
-**Note**: Building creates a 107KB executable with all algorithms and parallelization modes.
+### Windows (Visual Studio/MSVC)
+
+```powershell
+# Create build directory
+mkdir build
+cd build
+
+# Configure with CMake (generates Visual Studio solution)
+cmake ..
+
+# Build with MSBuild
+cmake --build . --config Release
+
+# Or open matmul.sln in Visual Studio
+
+# The executable will be at: build\Release\matmul.exe
+```
+
+**Note**: Building creates a ~107KB executable with all algorithms and parallelization modes.
 
 ### Build Types
 
 ```bash
 # Debug build (with symbols and warnings)
 cmake -DCMAKE_BUILD_TYPE=Debug ..
-make
+make  # or: cmake --build . --config Debug
 
 # Release build (with optimizations)
 cmake -DCMAKE_BUILD_TYPE=Release ..
-make
+make  # or: cmake --build . --config Release
 ```
 
 ## Running
@@ -152,14 +203,20 @@ For batch jobs, automation, and MPI execution, use command-line arguments:
 
 **MPI Execution (REQUIRED: Must use command-line args):**
 ```bash
-# Run with 4 MPI processes
+# Linux/MSYS2: Run with 4 MPI processes
 mpirun -np 4 ./matmul -a naive -m mpi -s 1000
+
+# Windows (MS-MPI): Run with 4 MPI processes
+mpiexec -n 4 matmul.exe -a naive -m mpi -s 1000
 
 # Strassen with optimization
 mpirun -np 8 ./matmul -a strassen -m mpi -s 2000 --optimize
 
-# On specific hosts
+# On specific hosts (Linux/cluster)
 mpirun -np 8 --hostfile hosts.txt ./matmul -a naive -m mpi -s 5000
+
+# On Windows cluster
+mpiexec -n 8 -machinefile machines.txt matmul.exe -a naive -m mpi -s 5000
 ```
 
 **Hybrid Mode (MPI + OpenMP):**

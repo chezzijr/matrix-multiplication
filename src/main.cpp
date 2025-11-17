@@ -8,8 +8,16 @@
 #include <iostream>
 #include <iomanip>
 #include <mpi.h>
-#include <unistd.h>
 #include <cstring>
+
+// Cross-platform stdin detection
+#ifdef _WIN32
+    #include <io.h>
+    #define isatty _isatty
+    #define STDIN_FILENO 0
+#else
+    #include <unistd.h>
+#endif
 
 using namespace matmul;
 
