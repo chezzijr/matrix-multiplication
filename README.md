@@ -84,9 +84,12 @@ make
 
 ## Running
 
-### Sequential or OpenMP Mode
+The program supports two modes: **Interactive** and **Command-line**.
+
+### Interactive Mode (No Arguments)
 
 ```bash
+# Launch interactive menu (for development/testing)
 ./matmul
 ```
 
@@ -98,26 +101,98 @@ This will launch the interactive CLI menu where you can:
 5. Set matrix size
 6. Specify input/output files (optional)
 
-### MPI Mode
+**Note:** Interactive mode does NOT work with `mpirun`. Use command-line arguments for MPI.
 
-For MPI execution, use `mpirun`:
+### Command-Line Mode (With Arguments)
+
+For batch jobs, automation, and MPI execution, use command-line arguments:
 
 ```bash
-# Run with 4 MPI processes
-mpirun -np 4 ./matmul
+# Show help
+./matmul --help
 
-# Run on specific hosts
-mpirun -np 8 --hostfile hosts.txt ./matmul
+# Basic usage
+./matmul --algorithm naive --mode seq --size 1000
+
+# Short form
+./matmul -a naive -m seq -s 1000
 ```
 
-### Hybrid Mode (MPI + OpenMP)
+**Available options:**
+- `-a, --algorithm <type>` : naive, strassen, openblas
+- `-m, --mode <type>` : seq, omp, mpi, hybrid
+- `-s, --size <N>` : Matrix size NxN
+- `-t, --threads <N>` : Number of OpenMP threads
+- `-o, --optimize` : Enable cache-friendly blocking
+- `-b, --block-size <N>` : Block size for optimization
+- `-i, --input <file>` : Input CSV file
+- `--validate` : Validate against OpenBLAS
+- `--verify` : Verification mode (compare algorithms)
+- `-h, --help` : Show help message
 
+### Examples
+
+**Sequential Execution:**
 ```bash
-# Run with 2 MPI processes, each using 4 OpenMP threads
-export OMP_NUM_THREADS=4
-mpirun -np 2 ./matmul
+# Naive algorithm, 1000x1000 matrix
+./matmul -a naive -m seq -s 1000
 
-# Or specify in the CLI menu when prompted
+# Strassen with cache optimization
+./matmul -a strassen -m seq -s 2000 --optimize
+```
+
+**OpenMP Execution:**
+```bash
+# Naive with 8 threads
+./matmul -a naive -m omp -t 8 -s 1000
+
+# Strassen with custom block size
+./matmul -a strassen -m omp -t 4 -s 2000 -b 128
+```
+
+**MPI Execution (REQUIRED: Must use command-line args):**
+```bash
+# Run with 4 MPI processes
+mpirun -np 4 ./matmul -a naive -m mpi -s 1000
+
+# Strassen with optimization
+mpirun -np 8 ./matmul -a strassen -m mpi -s 2000 --optimize
+
+# On specific hosts
+mpirun -np 8 --hostfile hosts.txt ./matmul -a naive -m mpi -s 5000
+```
+
+**Hybrid Mode (MPI + OpenMP):**
+```bash
+# 2 MPI processes, each with 4 OpenMP threads
+mpirun -np 2 ./matmul -a naive -m hybrid -t 4 -s 1000
+
+# Explicit thread count per process
+export OMP_NUM_THREADS=8
+mpirun -np 4 ./matmul -a strassen -m hybrid -s 2000
+```
+
+**Validation and Verification:**
+```bash
+# Validate against OpenBLAS
+./matmul -a naive -m seq -s 1000 --validate
+
+# Verify multiple algorithms (compare correctness)
+./matmul -m seq -s 1000 --verify
+```
+
+**Automation and Scripting:**
+```bash
+# Parameter sweep
+for size in 100 500 1000 2000; do
+    mpirun -np 4 ./matmul -a naive -m mpi -s $size --optimize
+done
+
+# Batch job (no terminal required)
+sbatch --nodes=4 --ntasks=16 << EOF
+#!/bin/bash
+mpirun ./matmul -a strassen -m mpi -s 5000 --optimize
+EOF
 ```
 
 ## Verification and Validation

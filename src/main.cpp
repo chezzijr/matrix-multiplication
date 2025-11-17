@@ -8,6 +8,8 @@
 #include <iostream>
 #include <iomanip>
 #include <mpi.h>
+#include <unistd.h>
+#include <cstring>
 
 using namespace matmul;
 
@@ -45,6 +47,107 @@ Matrix matmul::multiply(const Matrix& A, const Matrix& B, const Config& config) 
     }
 
     throw std::runtime_error("Invalid algorithm/mode combination");
+}
+
+// Parse command-line arguments into Config
+// Returns true if arguments were parsed successfully, false if help was shown or error occurred
+bool parse_arguments(int argc, char** argv, Config& config) {
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+
+        // Help
+        if (arg == "-h" || arg == "--help") {
+            print_usage(argv[0]);
+            return false;
+        }
+        // Algorithm
+        else if (arg == "-a" || arg == "--algorithm") {
+            if (i + 1 < argc) {
+                config.algorithm = parse_algorithm(argv[++i]);
+            } else {
+                throw std::runtime_error("--algorithm requires an argument");
+            }
+        }
+        // Execution mode
+        else if (arg == "-m" || arg == "--mode") {
+            if (i + 1 < argc) {
+                config.mode = parse_execution_mode(argv[++i]);
+            } else {
+                throw std::runtime_error("--mode requires an argument");
+            }
+        }
+        // Matrix size
+        else if (arg == "-s" || arg == "--size") {
+            if (i + 1 < argc) {
+                config.matrix_size = std::atoi(argv[++i]);
+                if (config.matrix_size <= 0) {
+                    throw std::runtime_error("Matrix size must be positive");
+                }
+            } else {
+                throw std::runtime_error("--size requires an argument");
+            }
+        }
+        // Number of threads
+        else if (arg == "-t" || arg == "--threads") {
+            if (i + 1 < argc) {
+                config.num_threads = std::atoi(argv[++i]);
+                if (config.num_threads <= 0) {
+                    throw std::runtime_error("Number of threads must be positive");
+                }
+            } else {
+                throw std::runtime_error("--threads requires an argument");
+            }
+        }
+        // Enable optimization
+        else if (arg == "-o" || arg == "--optimize") {
+            config.optimization.cache_friendly = true;
+            config.optimization.use_blocking = true;
+        }
+        // Block size
+        else if (arg == "-b" || arg == "--block-size") {
+            if (i + 1 < argc) {
+                config.optimization.block_size = std::atoi(argv[++i]);
+                if (config.optimization.block_size <= 0) {
+                    throw std::runtime_error("Block size must be positive");
+                }
+                config.optimization.cache_friendly = true;
+                config.optimization.use_blocking = true;
+            } else {
+                throw std::runtime_error("--block-size requires an argument");
+            }
+        }
+        // Input file
+        else if (arg == "-i" || arg == "--input") {
+            if (i + 1 < argc) {
+                config.input_file = argv[++i];
+                config.output_file = CsvIO::generate_output_filename(config.input_file);
+            } else {
+                throw std::runtime_error("--input requires an argument");
+            }
+        }
+        // Validation
+        else if (arg == "--validate") {
+            config.validate_against_openblas = true;
+        }
+        // Verification mode
+        else if (arg == "--verify") {
+            config.verification_mode = true;
+            // Default: verify all algorithms
+            config.verify_algorithms = {Algorithm::NAIVE, Algorithm::STRASSEN, Algorithm::OPENBLAS};
+        }
+        // Unknown argument
+        else {
+            throw std::runtime_error("Unknown argument: " + arg);
+        }
+    }
+
+    // Set defaults for OpenMP/Hybrid modes if not specified
+    if ((config.mode == ExecutionMode::OPENMP || config.mode == ExecutionMode::HYBRID) &&
+        config.num_threads == 1) {
+        config.num_threads = 4;  // Default to 4 threads
+    }
+
+    return true;
 }
 
 void print_results(const Config& config, int rank) {
@@ -95,14 +198,41 @@ int main(int argc, char** argv) {
     Config config;
 
     try {
-        // Only rank 0 runs the CLI menu
-        if (rank == 0) {
-            CliMenu menu;
-            if (!menu.run(config)) {
-                std::cout << "Operation cancelled.\n";
-                MPI_Abort(MPI_COMM_WORLD, 0);
-                return 0;
+        bool use_interactive = false;
+
+        // Determine if we should use interactive mode or argument parsing
+        if (argc > 1) {
+            // Command-line arguments provided - parse them
+            if (rank == 0) {
+                if (!parse_arguments(argc, argv, config)) {
+                    // Help was shown or parsing failed
+                    MPI_Abort(MPI_COMM_WORLD, 0);
+                    return 0;
+                }
             }
+        } else {
+            // No arguments - try interactive mode
+            if (rank == 0) {
+                // Check if stdin is available (terminal)
+                if (!isatty(STDIN_FILENO)) {
+                    std::cerr << "Error: No command-line arguments provided and stdin is not a terminal.\n";
+                    std::cerr << "       Interactive mode requires a terminal.\n\n";
+                    std::cerr << "Usage: " << argv[0] << " [OPTIONS]\n";
+                    std::cerr << "Run '" << argv[0] << " --help' for more information.\n\n";
+                    std::cerr << "NOTE: When using MPI (mpirun), you must provide command-line arguments.\n";
+                    MPI_Abort(MPI_COMM_WORLD, 1);
+                    return 1;
+                }
+
+                // Run interactive CLI menu
+                CliMenu menu;
+                if (!menu.run(config)) {
+                    std::cout << "Operation cancelled.\n";
+                    MPI_Abort(MPI_COMM_WORLD, 0);
+                    return 0;
+                }
+            }
+            use_interactive = true;
         }
 
         // Broadcast configuration to all processes
